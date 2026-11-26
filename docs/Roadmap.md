@@ -5,7 +5,7 @@
 - ✅ Helm chart with security defaults, probes, persistence, Ingress, ServiceMonitor, NetworkPolicy, PDB, `helm test` and a values schema
 - ✅ Readiness and liveness endpoints, JSON logs, graceful shutdown
 - ✅ End-to-end tests on a real Kubernetes (kind) cluster in CI
-- ✅ Release pipeline: image and chart to GitHub Container Registry, with SBOM, provenance and a vulnerability scan
+- ✅ Release pipeline: multi-arch image (amd64 and arm64) and chart to GitHub Container Registry, with SBOM, provenance and a vulnerability scan of both architectures
 - ✅ AWS EKS reference values and guide
 - ✅ Grafana dashboard in the chart, and a one-command real-traffic test on a laptop (0.6.3)
 

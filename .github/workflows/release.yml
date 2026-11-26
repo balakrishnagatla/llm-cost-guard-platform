@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # arm64 as well as amd64: Apple Silicon laptops, AWS Graviton nodes.
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -31,26 +33,44 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-      - name: Build image (not published yet)
+      - name: Build amd64 image (not published yet)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64
           load: true
-          tags: llm-cost-guard-platform:scan
+          tags: llm-cost-guard-platform:scan-amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Scan image for vulnerabilities (blocks the release)
+      - name: Build arm64 image (not published yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          tags: llm-cost-guard-platform:scan-arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan amd64 image for vulnerabilities (blocks the release)
         # Pinned to a release published after the March 2026 trivy-action tag compromise (CVE-2026-33634).
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: llm-cost-guard-platform:scan
+          image-ref: llm-cost-guard-platform:scan-amd64
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-      - name: Push image (with SBOM and provenance)
+      - name: Scan arm64 image for vulnerabilities (blocks the release)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: llm-cost-guard-platform:scan-arm64
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push multi-arch image (with SBOM and provenance)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -65,3 +85,8 @@ jobs:
           # Chart and app share the release version, so `--version X` installs app X.
           helm package charts/llm-cost-guard --version "$version" --app-version "$version"
           helm push llm-cost-guard-*.tgz "oci://ghcr.io/${{ github.repository_owner }}/charts"
+      - name: Published image covers amd64 and arm64
+        run: |
+          docker buildx imagetools inspect "${{ env.IMAGE }}:${GITHUB_REF_NAME#v}" > manifest.txt
+          cat manifest.txt
+          grep -q 'linux/amd64' manifest.txt && grep -q 'linux/arm64' manifest.txt

@@ -78,7 +78,7 @@ No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=ht
 Each release publishes the image and the chart to GitHub Container Registry:
 
 ```bash
-helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.3 \
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.4 \
   --set secrets.existingSecret=llm-cost-guard-secrets
 ```
 
@@ -93,7 +93,7 @@ helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 
 - Secrets come from an existing Secret (synced from a secret manager), never from values files in Git
 - Optional NetworkPolicy limits who can reach the gateway and what it can reach (DNS and HTTPS only)
 - The chart refuses unsafe combinations (more than one replica on SQLite storage), and a JSON schema validates every setting
-- Images include the latest OS security patches; every pull request and release is scanned by Trivy, and a release is never published with a fixable high or critical vulnerability. Releases ship an SBOM and build provenance
+- Images include the latest OS security patches; every pull request and release is scanned by Trivy, and a release is never published with a fixable high or critical vulnerability. Releases are built for amd64 and arm64 (Apple Silicon, AWS Graviton) and ship an SBOM and build provenance
 
 ## How it's tested
 

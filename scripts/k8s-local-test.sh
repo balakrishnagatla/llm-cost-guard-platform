@@ -83,7 +83,7 @@ install_monitoring() {
     --set 'grafana.additionalDataSources[0].uid=jaeger' \
     --set 'grafana.additionalDataSources[0].type=jaeger' \
     --set "grafana.additionalDataSources[0].url=http://jaeger.$MON_NS:16686" \
-    --wait --timeout 8m >/dev/null
+    --wait --timeout 8m >/dev/null || { diagnose "$MON_NS"; die "The monitoring stack didn't become ready."; }
 
   kc -n "$MON_NS" apply -f - >/dev/null <<'YAML'
 apiVersion: apps/v1
@@ -148,9 +148,12 @@ install_gateway() {
     values=(-f "$ROOT/deploy/values-local.yaml" --set config.budgets="demo:1\,k8s-budget:0.000001")
   fi
   # shellcheck disable=SC2046
-  hm upgrade --install "$RELEASE" "$chart" -n "$NS" \
-    $( [ "${LOCAL_CHART:-0}" = "1" ] || echo --version "$CHART_VERSION" ) \
-    "${values[@]}" --wait --timeout 5m
+  if ! hm upgrade --install "$RELEASE" "$chart" -n "$NS" \
+      $( [ "${LOCAL_CHART:-0}" = "1" ] || echo --version "$CHART_VERSION" ) \
+      "${values[@]}" --wait --timeout 5m; then
+    diagnose "$NS"
+    die "The gateway didn't become ready. Diagnostics are above."
+  fi
   kc -n "$NS" get pods,svc,pvc
 }
 
@@ -224,6 +227,16 @@ PY
 
   [ "$MONITORING" = "1" ] && check_monitoring
   return 0
+}
+
+diagnose() {  # $1 = namespace: show why pods aren't ready
+  log "Diagnostics for namespace $1"
+  kc -n "$1" get pods -o wide || true
+  kc -n "$1" get events --sort-by=.lastTimestamp 2>/dev/null | tail -15 || true
+  local p
+  for p in $(kc -n "$1" get pods -o name 2>/dev/null); do
+    kc -n "$1" logs "$p" --all-containers --tail=15 2>/dev/null | sed "s|^|  ${p#pod/}: |" || true
+  done
 }
 
 prom_query() {  # $1 = PromQL; prints the raw JSON from Prometheus via the API server proxy

@@ -1,0 +1,70 @@
+# AWS EKS reference values.
+#
+# Assumes the cluster has:
+#   - AWS Load Balancer Controller (ingress class "alb") and an ACM certificate for the host
+#   - EBS CSI driver with a "gp3" StorageClass
+#   - External Secrets Operator syncing AWS Secrets Manager -> the "llm-cost-guard-secrets" Secret
+#   - Prometheus Operator (kube-prometheus-stack) and an OpenTelemetry Collector
+# See docs/AWS-EKS.md.
+
+secrets:
+  existingSecret: llm-cost-guard-secrets   # keys: OPENAI_API_KEY, COST_GUARD_KEYS, DASHBOARD_PASSWORD, METRICS_TOKEN
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/llm-cost-guard  # IRSA, if the pod needs AWS APIs
+
+config:
+  logFormat: json
+  budgets: "search:25,support:10,marketing:5"
+
+persistence:
+  enabled: true
+  storageClass: gp3
+  size: 5Gi
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal          # keep the gateway on the private network
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/replace-me
+    alb.ingress.kubernetes.io/healthcheck-path: /health/ready
+  hosts:
+    - host: llm-gateway.internal.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+otel:
+  endpoint: http://otel-collector.observability:4318
+
+metrics:
+  podAnnotations: false
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+
+networkPolicy:
+  enabled: true
+  restrictEgress: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system      # ALB controller targets pods directly
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring       # Prometheus
+    - namespaceSelector:
+        matchLabels:
+          llm-cost-guard/client: "true"                  # namespaces allowed to call the gateway
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 1Gi

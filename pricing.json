@@ -1,0 +1,9 @@
+{
+  "_note": "USD per 1M tokens. Check each provider's pricing page before relying on totals. Groq prices are its published on-demand rates (free tier calls cost $0 but are priced here so savings are realistic).",
+  "openai/gpt-oss-20b": { "input_per_mtok": 0.075, "output_per_mtok": 0.30 },
+  "openai/gpt-oss-120b": { "input_per_mtok": 0.15, "output_per_mtok": 0.60 },
+  "gpt-4o": { "input_per_mtok": 2.50, "output_per_mtok": 10.00 },
+  "gpt-4o-mini": { "input_per_mtok": 0.15, "output_per_mtok": 0.60 },
+  "claude-sonnet": { "input_per_mtok": 3.00, "output_per_mtok": 15.00 },
+  "claude-haiku": { "input_per_mtok": 1.00, "output_per_mtok": 5.00 }
+}

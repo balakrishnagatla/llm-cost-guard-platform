@@ -1,0 +1,27 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "llm-cost-guard.fullname" . }}
+  labels:
+    {{- include "llm-cost-guard.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "llm-cost-guard.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      {{- if .Values.secrets.existingSecret }}
+      # If METRICS_TOKEN is set in the Secret, Prometheus sends it as a bearer token.
+      authorization:
+        credentials:
+          name: {{ .Values.secrets.existingSecret }}
+          key: METRICS_TOKEN
+          optional: true
+      {{- end }}
+{{- end }}

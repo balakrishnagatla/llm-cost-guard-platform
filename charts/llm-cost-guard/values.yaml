@@ -1,0 +1,150 @@
+# Default values for llm-cost-guard.
+
+replicaCount: 1  # SQLite storage supports one replica; see experimental.allowMultipleReplicas
+
+image:
+  repository: ghcr.io/balakrishnagatla/llm-cost-guard-platform
+  tag: ""  # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Upstream LLM providers
+provider:
+  openaiBaseUrl: https://api.groq.com/openai/v1  # any OpenAI-compatible API
+  anthropicBaseUrl: https://api.anthropic.com
+
+# API keys and passwords. In production use an existing Secret (e.g. synced from AWS Secrets
+# Manager by External Secrets). Recognised keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY,
+# COST_GUARD_KEYS, DASHBOARD_PASSWORD, METRICS_TOKEN.
+secrets:
+  existingSecret: ""
+  # Dev/test only: let the chart create the Secret from these values.
+  create: false
+  values: {}
+
+config:
+  budgets: ""              # e.g. "search:5,support:2.50" (USD per team per day)
+  cacheMode: deterministic # deterministic | all | off
+  cacheTtlSeconds: 86400
+  upstreamTimeout: 120
+  maxBodyBytes: 1000000
+  defaultOutputEstimate: 1024
+  logFormat: json          # json | text
+  logLevel: INFO
+  extraEnv: []             # additional env vars for the container
+
+# Override the bundled routing.json / pricing.json (leave empty to use the files in the chart).
+routing: {}
+pricing: {}
+
+# OpenTelemetry trace export (OTLP over HTTP), e.g. http://otel-collector.observability:4318
+otel:
+  endpoint: ""
+  serviceName: llm-cost-guard
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""  # "" = cluster default
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: llm-cost-guard.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}  # e.g. eks.amazonaws.com/role-arn for IRSA
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 160Mi
+  limits:
+    memory: 512Mi
+
+terminationGracePeriodSeconds: 30
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+probes:
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    failureThreshold: 3
+  readiness:
+    path: /health/ready
+    periodSeconds: 10
+    failureThreshold: 3
+  startup:
+    path: /health/live
+    periodSeconds: 3
+    failureThreshold: 30
+
+metrics:
+  # Add prometheus.io/scrape annotations to the pod (for annotation-based scraping)
+  podAnnotations: true
+  serviceMonitor:
+    enabled: false  # requires the Prometheus Operator CRDs
+    interval: 30s
+    labels: {}
+
+networkPolicy:
+  enabled: false
+  # Who may reach the gateway (NetworkPolicyPeer list). Empty = any pod in the cluster.
+  ingressFrom: []
+  # Restrict egress to DNS and HTTPS (providers, OTLP collectors on 443/4318).
+  restrictEgress: false
+  egressPorts: [443, 4318]
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+experimental:
+  # Multiple replicas need shared storage (Postgres + Redis, on the roadmap). Don't enable in production.
+  allowMultipleReplicas: false
+
+# In-cluster mock LLM provider for demos and CI (uses the same image). Never enable in production.
+mockProvider:
+  enabled: false
+  failRate: "0"

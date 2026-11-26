@@ -1,0 +1,13 @@
+# Used by CI: a kind cluster with the in-cluster mock provider instead of a real LLM API.
+image:
+  repository: llm-cost-guard-platform
+  tag: ci
+  pullPolicy: Never
+provider:
+  openaiBaseUrl: http://ci-llm-cost-guard-mock:9911/primary/v1
+mockProvider:
+  enabled: true
+  failRate: "0"
+config:
+  logFormat: json
+  budgets: "ci-budget:0.000001"

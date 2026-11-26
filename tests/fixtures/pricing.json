@@ -1,0 +1,7 @@
+{
+  "gpt-4o": { "input_per_mtok": 2.50, "output_per_mtok": 10.00 },
+  "gpt-4o-mini": { "input_per_mtok": 0.15, "output_per_mtok": 0.60 },
+  "backup-model": { "input_per_mtok": 0.10, "output_per_mtok": 0.40 },
+  "claude-sonnet": { "input_per_mtok": 3.00, "output_per_mtok": 15.00 },
+  "claude-haiku": { "input_per_mtok": 1.00, "output_per_mtok": 5.00 }
+}

@@ -1,0 +1,31 @@
+{
+  "_note": "Used when a request sets \"model\": \"auto\". Simple prompts go to 'cheap', complex ones to 'strong'. 'params' are added to the request for that tier unless the caller already set them. Defaults target Groq's free tier; see docs/Getting-Started.md for other providers.",
+  "max_cheap_prompt_chars": 2000,
+  "strong_keywords": [
+    "analyze", "analyse", "step by step", "prove", "debug", "refactor",
+    "write code", "architecture", "compare", "explain why", "reason"
+  ],
+  "providers": {
+    "openai": {
+      "cheap": "openai/gpt-oss-20b",
+      "strong": "openai/gpt-oss-120b",
+      "params": {
+        "cheap": { "reasoning_effort": "low", "max_completion_tokens": 1024 },
+        "strong": {}
+      }
+    },
+    "anthropic": { "cheap": "claude-haiku-4-5", "strong": "claude-sonnet-4-5" }
+  },
+  "_fallbacks_example": {
+    "openai": [
+      {
+        "name": "gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "api_key_env": "GEMINI_API_KEY",
+        "models": { "*": "gemini-2.5-flash" },
+        "drop_params": ["reasoning_effort"]
+      }
+    ]
+  },
+  "fallbacks": {}
+}

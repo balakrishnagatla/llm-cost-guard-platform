@@ -1,0 +1,111 @@
+name: Helm chart
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: chart-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - name: Chart config files match the app's defaults
+        run: |
+          diff routing.json charts/llm-cost-guard/files/routing.json
+          diff pricing.json charts/llm-cost-guard/files/pricing.json
+      - name: helm lint (default, CI, local and AWS values)
+        run: |
+          helm lint --strict charts/llm-cost-guard
+          for f in charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+            helm lint --strict charts/llm-cost-guard -f "$f"
+          done
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate rendered manifests against Kubernetes schemas
+        run: |
+          for f in "" charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+            echo "== ${f:-defaults}"
+            helm template lcg charts/llm-cost-guard ${f:+-f $f} \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0 -ignore-missing-schemas \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+      - name: Guard rails reject unsafe settings
+        run: |
+          if helm template lcg charts/llm-cost-guard --set replicaCount=2 >/dev/null 2>&1; then
+            echo "replicaCount=2 should fail without shared storage"; exit 1; fi
+          if helm template lcg charts/llm-cost-guard --set config.cacheMode=sometimes >/dev/null 2>&1; then
+            echo "invalid cacheMode should fail schema validation"; exit 1; fi
+          echo "guard rails ok"
+
+  kind-e2e:
+    name: chart-e2e
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: lcg
+      - name: Build image and load it into kind
+        run: |
+          docker build -t llm-cost-guard-platform:ci .
+          kind load docker-image llm-cost-guard-platform:ci --name lcg
+      - name: Install the chart (with the in-cluster mock provider)
+        run: |
+          helm install ci charts/llm-cost-guard -f charts/llm-cost-guard/ci/ci-values.yaml --wait --timeout 4m
+          kubectl get pods,svc,pvc
+      - name: helm test
+        run: helm test ci --logs
+      - name: End-to-end checks from inside the cluster
+        run: |
+          # Run the checks from the mock provider's pod (same image), calling the gateway by its
+          # Service name like a real app would. kubectl exec streams output reliably.
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard-mock --timeout=60s
+          in_cluster() { kubectl exec deploy/ci-llm-cost-guard-mock -- env GATEWAY_URL=http://ci-llm-cost-guard:8080 "$@"; }
+          in_cluster python scripts/live_smoke.py
+          # Budgets are enforced in-cluster (team ci-budget has a tiny budget)
+          in_cluster python -c "
+          import json, urllib.request, urllib.error
+          req = urllib.request.Request('http://ci-llm-cost-guard:8080/openai/v1/chat/completions', method='POST',
+              data=json.dumps({'model': 'auto', 'messages': [{'role': 'user', 'content': 'hi'}]}).encode(),
+              headers={'Content-Type': 'application/json', 'X-Team': 'ci-budget'})
+          try:
+              urllib.request.urlopen(req, timeout=30); raise SystemExit('expected 429')
+          except urllib.error.HTTPError as e:
+              assert e.code == 429, e.code
+              print('budget enforced (429)')
+          "
+      - name: Data survives a pod restart (persistent volume)
+        run: |
+          calls() {
+            kubectl exec deploy/ci-llm-cost-guard-mock -- python -c \
+              "import json,urllib.request; print(json.load(urllib.request.urlopen('http://ci-llm-cost-guard:8080/stats', timeout=10))['totals']['calls'])"
+          }
+          before=$(calls)
+          kubectl delete pod -l app.kubernetes.io/name=llm-cost-guard --wait
+          kubectl rollout status deploy/ci-llm-cost-guard --timeout 2m
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard --timeout=90s
+          after=""
+          for i in $(seq 1 10); do after=$(calls 2>/dev/null) && [ -n "$after" ] && break; sleep 2; done
+          echo "calls before restart: $before, after: $after"
+          test -n "$before" && test "$before" = "$after"
+      - name: Structured logs
+        if: always()
+        run: kubectl logs deploy/ci-llm-cost-guard --tail=8
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get all -o wide
+          kubectl describe pods
+          kubectl logs deploy/ci-llm-cost-guard --tail=100 || true
+          kubectl logs deploy/ci-llm-cost-guard-mock --tail=50 || true

@@ -1,0 +1,17 @@
+{
+  "max_cheap_prompt_chars": 2000,
+  "strong_keywords": ["analyze", "step by step", "debug", "explain why"],
+  "providers": {
+    "openai": {
+      "cheap": "gpt-4o-mini", "strong": "gpt-4o",
+      "params": { "cheap": { "reasoning_effort": "low", "max_completion_tokens": 256 }, "strong": {} }
+    },
+    "anthropic": { "cheap": "claude-haiku-4-5", "strong": "claude-sonnet-4-5" }
+  },
+  "fallbacks": {
+    "openai": [
+      { "name": "backup", "base_url": "https://backup.example/v1", "api_key_env": "BACKUP_API_KEY",
+        "models": { "*": "backup-model" }, "drop_params": ["reasoning_effort"] }
+    ]
+  }
+}

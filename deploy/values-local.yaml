@@ -1,0 +1,10 @@
+# Local cluster (kind, minikube, Docker Desktop Kubernetes) against the real Groq API.
+#
+#   kubectl create secret generic llm-cost-guard-secrets --from-literal=OPENAI_API_KEY=$GROQ_API_KEY
+#   helm install lcg charts/llm-cost-guard -f deploy/values-local.yaml
+#   kubectl port-forward svc/lcg-llm-cost-guard 8080:8080
+secrets:
+  existingSecret: llm-cost-guard-secrets
+config:
+  logFormat: text
+  budgets: "demo:1"

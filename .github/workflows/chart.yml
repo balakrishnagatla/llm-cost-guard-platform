@@ -86,7 +86,7 @@ jobs:
           # Run the checks from the mock provider's pod (same image), calling the gateway by its
           # Service name like a real app would. kubectl exec streams output reliably.
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard-mock --timeout=60s
-          in_cluster() { kubectl exec deploy/ci-llm-cost-guard-mock -- env GATEWAY_URL=http://ci-llm-cost-guard:8080 "$@"; }
+          in_cluster() { kubectl exec deploy/ci-llm-cost-guard-mock -- env GATEWAY_URL=http://ci-llm-cost-guard:8080 METRICS_TOKEN=ci-metrics-token "$@"; }
           in_cluster python scripts/live_smoke.py
           # Budgets are enforced in-cluster (team ci-budget has a tiny budget)
           in_cluster python -c "

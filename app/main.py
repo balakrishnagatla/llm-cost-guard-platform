@@ -517,7 +517,7 @@ def get_call(request_id: str):
 
 @app.get("/metrics", include_in_schema=False)
 def metrics(request: Request):
-    token = os.getenv("METRICS_TOKEN", "")
+    token = os.getenv("METRICS_TOKEN", "").strip()  # secrets mounted from files often end in a newline
     if token:
         supplied = request.headers.get("authorization", "")
         if not hmac.compare_digest(supplied.encode(), f"Bearer {token}".encode()):

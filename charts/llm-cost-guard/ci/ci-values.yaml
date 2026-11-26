@@ -11,3 +11,8 @@ mockProvider:
 config:
   logFormat: json
   budgets: "ci-budget:0.000001"
+# Protect /metrics with a token, so CI checks that helm test and the smoke test send it.
+secrets:
+  create: true
+  values:
+    METRICS_TOKEN: ci-metrics-token

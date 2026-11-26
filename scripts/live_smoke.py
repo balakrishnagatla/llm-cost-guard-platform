@@ -3,6 +3,7 @@
 Usage: start the gateway on localhost:8080, then run `python scripts/live_smoke.py`.
 Prints a summary to stdout and to the GitHub Actions job summary when available.
 """
+import base64
 import json
 import os
 import sys
@@ -23,8 +24,24 @@ def call(prompt: str, feature: str) -> tuple[dict, dict]:
         return dict(resp.headers), json.loads(resp.read())
 
 
+def get(path: str) -> bytes:
+    """GET a read endpoint, sending the dashboard login and metrics token when they're set."""
+    headers = {}
+    token = os.getenv("METRICS_TOKEN", "").strip()
+    password = os.getenv("DASHBOARD_PASSWORD", "").strip()
+    if path.startswith("/metrics") and token:
+        headers["Authorization"] = f"Bearer {token}"
+    elif password:
+        login = f"{os.getenv('DASHBOARD_USER', 'admin')}:{password}"
+        headers["Authorization"] = "Basic " + base64.b64encode(login.encode()).decode()
+    req = urllib.request.Request(f"{BASE}{path}", headers=headers)  # noqa: S310 (scheme checked above)
+    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        return resp.read()
+
+
 def main() -> int:
     failures = []
+    calls_before = json.loads(get("/stats"))["totals"]["calls"]  # the database may hold earlier calls
     h1, b1 = call("Say hello in five words", "greeting")
     h2, _ = call("Say hello in five words", "greeting")
     h3, _ = call("Analyze the trade-offs of caching LLM responses step by step, briefly", "analysis")
@@ -44,8 +61,7 @@ def main() -> int:
     # Reasoning control: a simple prompt on the cheap tier should stay short (it was ~227 output tokens
     # before low reasoning effort; ~63 after). A generous bound so normal variation doesn't flake.
     rid = h1.get("x-request-id", "")
-    with urllib.request.urlopen(f"{BASE}/calls/{rid}", timeout=10) as resp:  # noqa: S310
-        traced = json.loads(resp.read())
+    traced = json.loads(get(f"/calls/{rid}"))
     route = next((s["detail"] for s in traced["trace"] if s["step"] == "route"), "")
     check("trace recorded", len(traced["trace"]) >= 5, f"{len(traced['trace'])} steps")
     check("low reasoning effort applied", "reasoning_effort=low" in route, route)
@@ -59,17 +75,14 @@ def main() -> int:
     with urllib.request.urlopen(sreq, timeout=120) as resp:  # noqa: S310
         stream_text = resp.read().decode()
         stream_rid = resp.headers.get("x-request-id", "")
-    with urllib.request.urlopen(f"{BASE}/calls/{stream_rid}", timeout=10) as resp:  # noqa: S310
-        streamed = json.loads(resp.read())
+    streamed = json.loads(get(f"/calls/{stream_rid}"))
     check("streaming relays chunks", stream_text.count("data:") > 2, f"{stream_text.count('data:')} chunks")
     check("streamed call priced", streamed["cost_usd"] > 0, f"${streamed['cost_usd']:.6f}")
 
-    with urllib.request.urlopen(f"{BASE}/metrics", timeout=10) as resp:  # noqa: S310
-        check("prometheus metrics", b"costguard_requests_total" in resp.read(), "/metrics")
+    check("prometheus metrics", b"costguard_requests_total" in get("/metrics"), "/metrics")
 
-    with urllib.request.urlopen(f"{BASE}/stats", timeout=10) as resp:  # noqa: S310
-        t = json.loads(resp.read())["totals"]
-    check("calls logged", t["calls"] == 4, str(t["calls"]))
+    t = json.loads(get("/stats"))["totals"]
+    check("calls logged", t["calls"] - calls_before == 4, f"{t['calls'] - calls_before} new")
     summary = (f"Spend ${t['cost_usd']:.6f} · saved by cache ${t['saved_usd']:.6f} · "
                f"saved by routing ${t['routing_saved_usd']:.6f} · output tokens {t['output_tokens']} "
                f"(reasoning {t['reasoning_tokens']})")

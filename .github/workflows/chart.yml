@@ -60,6 +60,14 @@ jobs:
         run: |
           docker build -t llm-cost-guard-platform:ci .
           kind load docker-image llm-cost-guard-platform:ci --name lcg
+      - name: Scan image for vulnerabilities
+        # Pinned to a release published after the March 2026 trivy-action tag compromise (CVE-2026-33634).
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: llm-cost-guard-platform:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
       - name: Install the chart (with the in-cluster mock provider)
         run: |
           helm install ci charts/llm-cost-guard -f charts/llm-cost-guard/ci/ci-values.yaml --wait --timeout 4m

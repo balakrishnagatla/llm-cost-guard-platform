@@ -10,10 +10,12 @@ Dashboard login (DASHBOARD_PASSWORD): protects /, /dashboard and /stats with
 HTTP Basic auth (user: DASHBOARD_USER, default "admin").
 """
 import base64
+import functools
 import hashlib
 import hmac
 import os
 import re
+import secrets
 
 from fastapi import HTTPException, Request
 
@@ -54,10 +56,49 @@ def resolve_team(request: Request) -> str:
     raise HTTPException(401, "Missing or invalid X-Cost-Guard-Key")
 
 
+_FINGERPRINT_ITERATIONS = 100_000
+_salt: bytes | None = None
+
+
+def _fingerprint_salt() -> bytes:
+    """Random per-deployment salt, kept next to the database so cache keys survive restarts.
+
+    If the data directory isn't writable, a per-process salt is used (cached answers then
+    don't survive a restart, which is safe).
+    """
+    global _salt
+    if _salt is None:
+        path = os.path.join(os.path.dirname(os.getenv("DB_PATH", "data/costguard.db")) or ".", "fingerprint.salt")
+        try:
+            with open(path, "rb") as f:
+                _salt = f.read()
+        except FileNotFoundError:
+            _salt = secrets.token_bytes(32)
+            try:
+                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as f:
+                    f.write(_salt)
+            except FileExistsError:  # another worker created it first
+                with open(path, "rb") as f:
+                    _salt = f.read()
+            except OSError:
+                pass
+    return _salt
+
+
+@functools.lru_cache(maxsize=1024)
+def _derive(credential: str) -> str:
+    # A slow, salted key derivation, so a leaked cache table can't be used to test guesses
+    # of the credential offline. Computed once per credential per process.
+    return hashlib.pbkdf2_hmac("sha256", credential.encode(), _fingerprint_salt(),
+                               _FINGERPRINT_ITERATIONS).hex()[:32]
+
+
 def credential_fingerprint(headers: dict) -> str:
-    """Short hash of the upstream credential, so cached answers never cross API keys."""
-    secret = headers.get("Authorization") or headers.get("x-api-key") or ""
-    return hashlib.sha256(secret.encode()).hexdigest()[:16]
+    """Opaque per-credential tag, so cached answers never cross API keys."""
+    credential = headers.get("Authorization") or headers.get("x-api-key") or ""
+    return _derive(credential) if credential else "none"
 
 
 def require_dashboard_login(request: Request) -> None:

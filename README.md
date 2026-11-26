@@ -78,7 +78,7 @@ No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=ht
 Each release publishes the image and the chart to GitHub Container Registry:
 
 ```bash
-helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.4 \
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.5 \
   --set secrets.existingSecret=llm-cost-guard-secrets
 ```
 
@@ -93,13 +93,15 @@ helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 
 - Secrets come from an existing Secret (synced from a secret manager), never from values files in Git
 - Optional NetworkPolicy limits who can reach the gateway and what it can reach (DNS and HTTPS only)
 - The chart refuses unsafe combinations (more than one replica on SQLite storage), and a JSON schema validates every setting
+- API keys never appear in the response cache: entries are tagged with a salted, slow PBKDF2 fingerprint of the caller's credential (per-deployment salt on the data volume), so a copied database can't be used to test key guesses
+- CodeQL code scanning, Dependabot alerts and secret scanning with push protection are on for the repository
 - Images include the latest OS security patches; every pull request and release is scanned by Trivy, and a release is never published with a fixable high or critical vulnerability. Releases are built for amd64 and arm64 (Apple Silicon, AWS Graviton) and ship an SBOM and build provenance
 
 ## How it's tested
 
 Every pull request runs:
 
-- **App:** lint, type checks, 63 tests (96% coverage), dependency audit, static security scan
+- **App:** lint, type checks, 64 tests (96% coverage), dependency audit, static security scan
 - **Chart:** `helm lint`, schema validation of the rendered manifests (kubeconform), and guard-rail checks
 - **End to end on Kubernetes:** a real kind cluster installs the chart with an in-cluster mock provider, runs `helm test`, sends traffic through the gateway from a pod in the cluster (routing, caching, streaming, tracing, metrics, budgets), then deletes the pod and checks the call history survived
 - **Real traffic (on demand):** `scripts/k8s-local-test.sh` runs the same kind of checks against Groq, plus Prometheus, Grafana and Jaeger

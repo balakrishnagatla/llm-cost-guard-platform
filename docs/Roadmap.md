@@ -7,6 +7,7 @@
 - ✅ End-to-end tests on a real Kubernetes (kind) cluster in CI
 - ✅ Release pipeline: image and chart to GitHub Container Registry, with SBOM, provenance and a vulnerability scan
 - ✅ AWS EKS reference values and guide
+- ✅ Grafana dashboard in the chart, and a one-command real-traffic test on a laptop (0.6.3)
 
 ## Next: high availability
 
@@ -23,4 +24,4 @@
 ## Later
 
 - Other clouds: GKE (Workload Identity, Cloud SQL, Memorystore) and AKS
-- Grafana dashboard and Prometheus alerts packaged with the chart
+- Prometheus alerts packaged with the chart (the Grafana dashboard ships since 0.6.3)

@@ -1,0 +1,16 @@
+{{- if .Values.metrics.grafanaDashboard.enabled }}
+# Grafana dashboard, picked up by the Grafana sidecar (kube-prometheus-stack watches for this label).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "llm-cost-guard.fullname" . }}-dashboard
+  {{- with .Values.metrics.grafanaDashboard.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "llm-cost-guard.labels" . | nindent 4 }}
+    {{ .Values.metrics.grafanaDashboard.labelKey }}: {{ .Values.metrics.grafanaDashboard.labelValue | quote }}
+data:
+  llm-cost-guard.json: |-
+    {{- .Files.Get "files/grafana-dashboard.json" | nindent 4 }}
+{{- end }}

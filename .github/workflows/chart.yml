@@ -19,10 +19,17 @@ jobs:
         run: |
           diff routing.json charts/llm-cost-guard/files/routing.json
           diff pricing.json charts/llm-cost-guard/files/pricing.json
+      - name: Lint the local test script
+        run: shellcheck scripts/k8s-local-test.sh
+      - name: Grafana dashboard ships with the chart
+        run: |
+          helm template lcg charts/llm-cost-guard --set metrics.grafanaDashboard.enabled=true \
+            | grep -q 'grafana_dashboard: "1"'
+          python3 -c "import json; d=json.load(open('charts/llm-cost-guard/files/grafana-dashboard.json')); assert d['uid']=='llm-cost-guard'"
       - name: helm lint (default, CI, local and AWS values)
         run: |
           helm lint --strict charts/llm-cost-guard
-          for f in charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+          for f in charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-local-observability.yaml deploy/values-aws-eks.yaml; do
             helm lint --strict charts/llm-cost-guard -f "$f"
           done
       - name: Install kubeconform
@@ -31,7 +38,7 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
       - name: Validate rendered manifests against Kubernetes schemas
         run: |
-          for f in "" charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+          for f in "" charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-local-observability.yaml deploy/values-aws-eks.yaml; do
             echo "== ${f:-defaults}"
             helm template lcg charts/llm-cost-guard ${f:+-f $f} \
               | kubeconform -strict -summary -kubernetes-version 1.31.0 -ignore-missing-schemas \

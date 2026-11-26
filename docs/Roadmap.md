@@ -7,7 +7,7 @@
 - ✅ End-to-end tests on a real Kubernetes (kind) cluster in CI
 - ✅ Release pipeline: multi-arch image (amd64 and arm64) and chart to GitHub Container Registry, with SBOM, provenance and a vulnerability scan of both architectures
 - ✅ AWS EKS reference values and guide
-- ✅ Grafana dashboard in the chart, and a one-command real-traffic test on a laptop (0.6.3)
+- ✅ Grafana dashboard in the chart, and a one-command real-traffic test on a laptop (0.6.3); [all checks pass](Real-Traffic-Test.md) on Apple Silicon with real Groq traffic (0.6.6)
 
 ## Next: high availability
 

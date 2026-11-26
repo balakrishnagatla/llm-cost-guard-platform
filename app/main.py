@@ -475,16 +475,18 @@ async def _proxy_stream(request: Request, provider: Provider, url: str, headers:
 
 @app.post("/openai/v1/chat/completions")
 async def openai_chat(request: Request):
-    auth = request.headers.get("authorization") or f"Bearer {os.getenv('OPENAI_API_KEY', '')}"
-    return await _proxy(request, "openai", f"{OPENAI_BASE}/chat/completions", {"Authorization": auth})
+    # Caller's own key wins; otherwise the server's key. Send no header at all when there's neither
+    # (keyless upstreams such as a local Ollama or a test provider): "Bearer " alone is an invalid header.
+    auth = request.headers.get("authorization") or (f"Bearer {key}" if (key := os.getenv("OPENAI_API_KEY")) else "")
+    return await _proxy(request, "openai", f"{OPENAI_BASE}/chat/completions",
+                        {"Authorization": auth} if auth else {})
 
 
 @app.post("/anthropic/v1/messages")
 async def anthropic_messages(request: Request):
-    headers = {
-        "x-api-key": request.headers.get("x-api-key") or os.environ.get("ANTHROPIC_API_KEY") or "",
-        "anthropic-version": request.headers.get("anthropic-version") or "2023-06-01",
-    }
+    headers = {"anthropic-version": request.headers.get("anthropic-version") or "2023-06-01"}
+    if api_key := request.headers.get("x-api-key") or os.environ.get("ANTHROPIC_API_KEY"):
+        headers["x-api-key"] = api_key
     return await _proxy(request, "anthropic", f"{ANTHROPIC_BASE}/v1/messages", headers)
 
 

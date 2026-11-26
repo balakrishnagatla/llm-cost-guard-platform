@@ -65,3 +65,25 @@ def test_integer_settings_accept_scientific_notation(monkeypatch):
     assert _env_int("SOME_LIMIT", 5) == 1_000_000
     monkeypatch.delenv("SOME_LIMIT")
     assert _env_int("SOME_LIMIT", 5) == 5
+
+
+def test_no_api_key_means_no_auth_header(client, upstream, monkeypatch):
+    """Regression: with no key configured the gateway sent 'Authorization: Bearer ' (invalid) and every call 502'd."""
+    import httpx
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    sent = {}
+    real = upstream.__call__
+
+    def capture(request: httpx.Request):
+        sent.update(request.headers)
+        return real(request)
+
+    client.app.state.client = httpx.AsyncClient(transport=httpx.MockTransport(capture))
+    r = client.post("/openai/v1/chat/completions", json=chat("hi", model="gpt-4o-mini"))
+    assert r.status_code == 200
+    assert "authorization" not in sent
+
+    monkeypatch.setenv("OPENAI_API_KEY", "server-key")
+    client.post("/openai/v1/chat/completions", json=chat("hi again", model="gpt-4o-mini"))
+    assert sent["authorization"] == "Bearer server-key"

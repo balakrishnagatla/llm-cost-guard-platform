@@ -1,0 +1,55 @@
+{{- if .Values.mockProvider.enabled }}
+# Simulated LLM provider for demos and CI. Never enable in production.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "llm-cost-guard.fullname" . }}-mock
+  labels:
+    {{- include "llm-cost-guard.mockSelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "llm-cost-guard.mockSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "llm-cost-guard.mockSelectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mock
+          image: {{ include "llm-cost-guard.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "scripts/mock_provider.py"]
+          env:
+            - name: FAIL_RATE
+              value: {{ .Values.mockProvider.failRate | quote }}
+          ports:
+            - name: http
+              containerPort: 9911
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "llm-cost-guard.fullname" . }}-mock
+  labels:
+    {{- include "llm-cost-guard.mockSelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  ports:
+    - name: http
+      port: 9911
+      targetPort: http
+  selector:
+    {{- include "llm-cost-guard.mockSelectorLabels" . | nindent 4 }}
+{{- end }}

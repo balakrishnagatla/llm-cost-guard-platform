@@ -1,0 +1,98 @@
+name: Helm chart
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: chart-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - name: Chart config files match the app's defaults
+        run: |
+          diff routing.json charts/llm-cost-guard/files/routing.json
+          diff pricing.json charts/llm-cost-guard/files/pricing.json
+      - name: helm lint (default, CI, local and AWS values)
+        run: |
+          helm lint --strict charts/llm-cost-guard
+          for f in charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+            helm lint --strict charts/llm-cost-guard -f "$f"
+          done
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate rendered manifests against Kubernetes schemas
+        run: |
+          for f in "" charts/llm-cost-guard/ci/ci-values.yaml deploy/values-local.yaml deploy/values-aws-eks.yaml; do
+            echo "== ${f:-defaults}"
+            helm template lcg charts/llm-cost-guard ${f:+-f $f} \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0 -ignore-missing-schemas \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+      - name: Guard rails reject unsafe settings
+        run: |
+          if helm template lcg charts/llm-cost-guard --set replicaCount=2 >/dev/null 2>&1; then
+            echo "replicaCount=2 should fail without shared storage"; exit 1; fi
+          if helm template lcg charts/llm-cost-guard --set config.cacheMode=sometimes >/dev/null 2>&1; then
+            echo "invalid cacheMode should fail schema validation"; exit 1; fi
+          echo "guard rails ok"
+
+  kind-e2e:
+    name: chart-e2e
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: lcg
+      - name: Build image and load it into kind
+        run: |
+          docker build -t llm-cost-guard-platform:ci .
+          kind load docker-image llm-cost-guard-platform:ci --name lcg
+      - name: Install the chart (with the in-cluster mock provider)
+        run: |
+          helm install ci charts/llm-cost-guard -f charts/llm-cost-guard/ci/ci-values.yaml --wait --timeout 4m
+          kubectl get pods,svc,pvc
+      - name: helm test
+        run: helm test ci --logs
+      - name: End-to-end checks through the gateway
+        run: |
+          kubectl port-forward svc/ci-llm-cost-guard 8080:8080 >/tmp/pf.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:8080/health/ready && break; sleep 1; done
+          python3 scripts/live_smoke.py
+          # Budgets are enforced in-cluster (ci-budget has a tiny budget)
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/openai/v1/chat/completions \
+            -H 'Content-Type: application/json' -H 'X-Team: ci-budget' \
+            -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}')
+          test "$code" = 429 && echo "budget enforced (429)"
+      - name: Data survives a pod restart (persistent volume)
+        run: |
+          before=$(curl -s localhost:8080/stats | python3 -c "import json,sys; print(json.load(sys.stdin)['totals']['calls'])")
+          kubectl delete pod -l app.kubernetes.io/name=llm-cost-guard --wait
+          kubectl rollout status deploy/ci-llm-cost-guard --timeout 2m
+          pkill -f port-forward || true
+          kubectl port-forward svc/ci-llm-cost-guard 8080:8080 >/tmp/pf.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:8080/health/ready >/dev/null && break; sleep 1; done
+          after=$(curl -s localhost:8080/stats | python3 -c "import json,sys; print(json.load(sys.stdin)['totals']['calls'])")
+          echo "calls before restart: $before, after: $after"
+          test "$before" = "$after"
+      - name: Structured logs
+        run: kubectl logs deploy/ci-llm-cost-guard --tail=5
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get all -o wide
+          kubectl describe pods
+          kubectl logs deploy/ci-llm-cost-guard --tail=100 || true
+          kubectl logs deploy/ci-llm-cost-guard-mock --tail=50 || true

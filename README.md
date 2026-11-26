@@ -1,0 +1,100 @@
+# LLM Cost Guard Platform
+
+[![CI](https://github.com/balakrishnagatla/llm-cost-guard-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/balakrishnagatla/llm-cost-guard-platform/actions/workflows/ci.yml)
+[![Helm chart](https://github.com/balakrishnagatla/llm-cost-guard-platform/actions/workflows/chart.yml/badge.svg)](https://github.com/balakrishnagatla/llm-cost-guard-platform/actions/workflows/chart.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Production packaging of [LLM Cost Guard](https://github.com/balakrishnagatla/llm-cost-guard): a Helm chart for Kubernetes, a hardened container image, and reference setups for AWS EKS.**
+
+LLM Cost Guard is a gateway that sits between your apps and LLM providers. It tracks what every call costs by team and feature, and cuts spend with caching, model routing, reasoning control and budgets, with failover and full tracing. The [original repository](https://github.com/balakrishnagatla/llm-cost-guard) is the reference implementation and local Docker Compose prototype. This repository takes it to Kubernetes.
+
+```
+                         Kubernetes cluster
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Ingress (ALB / NGINX, TLS)                                     │
+  │        │                                                        │
+  │        ▼                                                        │
+  │  Service ──► Deployment: llm-cost-guard  ─────────────────────────────► Groq / OpenAI / Anthropic
+  │                 │  non-root, read-only FS, probes                │      (failover to backup provider)
+  │                 ├─ ConfigMap: routing.json, pricing.json         │
+  │                 ├─ Secret: API keys (External Secrets / Vault)   │
+  │                 └─ PersistentVolume: call history, cache         │
+  │                                                                 │
+  │  /metrics ──► Prometheus (ServiceMonitor) ──► Grafana            │
+  │  OTLP     ──► OpenTelemetry Collector ──► Jaeger / Tempo / X-Ray │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+## What's here
+
+| Path | What it is |
+|---|---|
+| `charts/llm-cost-guard/` | Helm chart: Deployment, Service, Ingress, ConfigMap, Secret or existing Secret, PersistentVolumeClaim, ServiceMonitor, NetworkPolicy, PodDisruptionBudget, `helm test`, values schema |
+| `deploy/` | Values for a local cluster and for AWS EKS |
+| `app/` | The gateway (from LLM Cost Guard v0.5), plus Kubernetes readiness/liveness endpoints and JSON logs |
+| `scripts/mock_provider.py` | Simulated LLM provider, used for in-cluster tests and demos |
+| `.github/workflows/` | App CI, chart lint and schema validation, end-to-end install on a kind cluster, release to GHCR |
+
+## Quick start on a local cluster
+
+Needs Docker, [kind](https://kind.sigs.k8s.io) (or minikube / Docker Desktop Kubernetes), `kubectl` and `helm`.
+
+```bash
+git clone https://github.com/balakrishnagatla/llm-cost-guard-platform.git
+cd llm-cost-guard-platform
+
+kind create cluster --name lcg
+docker build -t llm-cost-guard-platform:dev .
+kind load docker-image llm-cost-guard-platform:dev --name lcg
+
+# Free Groq key from console.groq.com/keys
+kubectl create secret generic llm-cost-guard-secrets --from-literal=OPENAI_API_KEY=<your-key>
+
+helm install lcg charts/llm-cost-guard -f deploy/values-local.yaml \
+  --set image.repository=llm-cost-guard-platform --set image.tag=dev --set image.pullPolicy=Never
+helm test lcg
+kubectl port-forward svc/lcg-llm-cost-guard 8080:8080   # dashboard: http://localhost:8080
+```
+
+No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=http://lcg-llm-cost-guard-mock:9911/primary/v1` to use the built-in simulated provider.
+
+## Install from the registry
+
+Each release publishes the image and the chart to GitHub Container Registry:
+
+```bash
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.1.0 \
+  --set secrets.existingSecret=llm-cost-guard-secrets
+```
+
+## Production on AWS EKS
+
+`deploy/values-aws-eks.yaml` sets up an internal ALB with TLS, gp3 storage, secrets from AWS Secrets Manager through External Secrets, a Prometheus ServiceMonitor, OpenTelemetry export and network policies. Step by step: [docs/AWS-EKS.md](docs/AWS-EKS.md).
+
+## Security defaults
+
+- Runs as non-root (UID 10001) with a read-only root filesystem, all capabilities dropped and the `RuntimeDefault` seccomp profile
+- No service account token mounted
+- Secrets come from an existing Secret (synced from a secret manager), never from values files in Git
+- Optional NetworkPolicy limits who can reach the gateway and what it can reach (DNS and HTTPS only)
+- The chart refuses unsafe combinations (more than one replica on SQLite storage), and a JSON schema validates every setting
+- Releases ship an SBOM and build provenance, and fail on high or critical vulnerabilities found by Trivy
+
+## How it's tested
+
+Every pull request runs:
+
+- **App:** lint, type checks, 55 tests (96% coverage), dependency audit, static security scan
+- **Chart:** `helm lint`, schema validation of the rendered manifests (kubeconform), and guard-rail checks
+- **End to end on Kubernetes:** a real kind cluster installs the chart with an in-cluster mock provider, runs `helm test`, sends real traffic through the gateway (routing, caching, streaming, tracing, metrics, budgets), then deletes the pod and checks the call history survived
+
+## Docs
+
+- [Kubernetes guide and chart reference](docs/Kubernetes.md)
+- [AWS EKS deployment](docs/AWS-EKS.md)
+- [Roadmap](docs/Roadmap.md): Postgres and Redis for multiple replicas, autoscaling, Terraform, GitOps
+- Gateway features, observability and results: [LLM Cost Guard docs](https://github.com/balakrishnagatla/llm-cost-guard/blob/main/docs/Home.md)
+
+## License
+
+[MIT](LICENSE)

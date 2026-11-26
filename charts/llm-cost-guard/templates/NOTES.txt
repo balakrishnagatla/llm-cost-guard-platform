@@ -1,0 +1,29 @@
+LLM Cost Guard {{ .Chart.AppVersion }} is deployed as release "{{ .Release.Name }}".
+
+1. Open the dashboard:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}/
+{{- end }}
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "llm-cost-guard.fullname" . }} 8080:{{ .Values.service.port }}
+   then open http://localhost:8080
+{{- end }}
+
+2. Point your apps at the gateway instead of the provider:
+   base URL  http://{{ include "llm-cost-guard.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/openai/v1
+   headers   X-Team / X-Feature (or X-Cost-Guard-Key when COST_GUARD_KEYS is set)
+
+3. Metrics for Prometheus: /metrics{{ if .Values.metrics.serviceMonitor.enabled }} (ServiceMonitor created){{ end }}
+{{- if .Values.otel.endpoint }}
+   Traces are exported to {{ .Values.otel.endpoint }}
+{{- end }}
+{{- if not (or .Values.secrets.existingSecret .Values.secrets.create) }}
+
+WARNING: no Secret is configured, so the gateway has no provider API key and runs in open dev mode.
+         Set secrets.existingSecret (recommended) with OPENAI_API_KEY, COST_GUARD_KEYS and DASHBOARD_PASSWORD.
+{{- end }}
+{{- if .Values.mockProvider.enabled }}
+
+NOTE: the mock LLM provider is enabled. Don't use this in production.
+{{- end }}

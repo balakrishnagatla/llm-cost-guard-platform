@@ -1,0 +1,18 @@
+apiVersion: v2
+name: llm-cost-guard
+description: LLM cost gateway with per-team cost tracking, caching, model routing, reasoning control, budgets, failover and tracing
+type: application
+version: 0.1.0
+appVersion: "0.6.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/balakrishnagatla/llm-cost-guard-platform
+sources:
+  - https://github.com/balakrishnagatla/llm-cost-guard-platform
+keywords:
+  - llm
+  - finops
+  - gateway
+  - cost-optimization
+maintainers:
+  - name: balakrishnagatla
+    url: https://github.com/balakrishnagatla

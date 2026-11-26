@@ -147,6 +147,15 @@ install_gateway() {
   else
     values=(-f "$ROOT/deploy/values-local.yaml" --set config.budgets="demo:1\,k8s-budget:0.000001")
   fi
+  # A failed earlier attempt leaves the Deployment marked "progress deadline exceeded", which
+  # Helm then reads as the new upgrade failing. Start clean; the data volume is kept.
+  local status
+  status="$(hm status "$RELEASE" -n "$NS" -o json 2>/dev/null | grep -o '"status":"[a-z-]*"' | head -1 | cut -d'"' -f4 || true)"
+  if [ -n "$status" ] && [ "$status" != "deployed" ]; then
+    log "Removing the previous '$status' release (the data volume is kept)"
+    hm uninstall "$RELEASE" -n "$NS" --wait >/dev/null
+  fi
+
   # shellcheck disable=SC2046
   if ! hm upgrade --install "$RELEASE" "$chart" -n "$NS" \
       $( [ "${LOCAL_CHART:-0}" = "1" ] || echo --version "$CHART_VERSION" ) \

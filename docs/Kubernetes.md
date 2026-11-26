@@ -59,15 +59,17 @@ Every value is checked against `values.schema.json`, so typos and invalid settin
 | Step | What happens |
 |---|---|
 | Cluster | Creates kind cluster `lcg-local` (reused if it exists) |
-| Monitoring | kube-prometheus-stack (Prometheus Operator, Prometheus, Grafana; no Alertmanager or node exporter) and Jaeger, in namespace `monitoring` |
+| Monitoring | kube-prometheus-stack (Prometheus Operator, Prometheus, Grafana) and Jaeger, in namespace `monitoring`. Kept lean for a laptop: no Alertmanager, node exporter, kube-state-metrics, default alert rules or control-plane scraping; 6 hours of data |
 | Secret | Reads `OPENAI_API_KEY` from `ENV_FILE` (default `~/llm-cost-guard/.env`) and passes it to Kubernetes through stdin. It is never printed or put on a command line |
 | Install | `oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard` at the chart version in this checkout, with [`deploy/values-local-observability.yaml`](../deploy/values-local-observability.yaml) |
 | Checks | `helm test`; real calls through the gateway (cheap vs strong routing, cache hit, low reasoning effort, trace steps, streaming); traffic from three teams; budget 429; pod restart keeps the data; JSON logs; Prometheus target up and `costguard_requests_total`; Grafana dashboard present; traces in Jaeger |
 | Report | PASS/FAIL per check, saved to `.k8s-local/report.txt` |
 
-Options: `LOCAL_CHART=1` installs the chart from your checkout instead of GHCR, `MONITORING=0` skips the monitoring stack, `CHART_VERSION=x.y.z` picks a published version. `ui` port-forwards the gateway (8080), Grafana (3000), Prometheus (9090) and Jaeger (16686); `down` deletes the cluster.
+Options: `LOCAL_CHART=1` installs the chart from your checkout instead of GHCR, `MONITORING=0` skips the monitoring stack, `CHART_VERSION=x.y.z` picks a published version. `ui` port-forwards the gateway (8080), Grafana (3000), Prometheus (9090) and Jaeger (16686) and reconnects any that drop; `down` deletes the cluster. A failed earlier install is removed before installing again (the data volume is kept), and if pods don't become ready the script prints their status, events and logs.
 
-A run makes about 15 small calls, well inside Groq's free tier. The first run downloads the kind node and monitoring images, so allow 5 to 10 minutes; later runs take about 2.
+Results of the latest run, with screenshots: [Real-traffic test](Real-Traffic-Test.md).
+
+A run makes about 15 small calls, well inside Groq's free tier. The first run downloads the kind node and monitoring images, so allow 5 to 10 minutes; later runs take about 3. Give Docker Desktop at least 4 GB of memory, or use `MONITORING=0`.
 
 ## Scaling
 

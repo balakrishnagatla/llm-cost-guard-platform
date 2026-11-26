@@ -50,6 +50,14 @@ ENV_FILE=~/path/to/.env ./scripts/k8s-local-test.sh   # .env with OPENAI_API_KEY
 
 It checks: `helm test`, routing to the cheap and strong models, cache hits, low reasoning effort, per-call traces, streaming, budgets (429), data surviving a pod restart, JSON logs, Prometheus scraping via the ServiceMonitor, the Grafana dashboard, and traces in Jaeger. Needs Docker Desktop; installs `kind`, `kubectl` and `helm` with Homebrew if missing. Details in the [Kubernetes guide](docs/Kubernetes.md#real-traffic-test-on-a-laptop).
 
+**Latest run (v0.6.6, MacBook Air with Apple Silicon): all 23 checks passed.** 26 real calls cost $0.0011 and the cache and routing saved $0.0021. The runs also found six issues CI couldn't, all now fixed. Results, screenshots and findings: [Real-traffic test](docs/Real-Traffic-Test.md).
+
+| Gateway dashboard | Grafana (shipped with the chart) |
+|---|---|
+| ![Gateway dashboard](docs/screenshots/gateway-dashboard.jpg) | ![Grafana dashboard](docs/screenshots/grafana-dashboard.jpg) |
+
+![Jaeger trace of one real call](docs/screenshots/jaeger-trace-detail.jpg)
+
 ## Quick start on a local cluster
 
 Needs Docker, [kind](https://kind.sigs.k8s.io) (or minikube / Docker Desktop Kubernetes), `kubectl` and `helm`.
@@ -109,6 +117,7 @@ Every pull request runs:
 ## Docs
 
 - [Kubernetes guide and chart reference](docs/Kubernetes.md)
+- [Real-traffic test: results, screenshots and findings](docs/Real-Traffic-Test.md)
 - [AWS EKS deployment](docs/AWS-EKS.md)
 - [Roadmap](docs/Roadmap.md): Postgres and Redis for multiple replicas, autoscaling, Terraform, GitOps
 - Gateway features, observability and results: [LLM Cost Guard docs](https://github.com/balakrishnagatla/llm-cost-guard/blob/main/docs/Home.md)

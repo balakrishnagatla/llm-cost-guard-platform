@@ -102,7 +102,7 @@ def credential_fingerprint(headers: dict) -> str:
 
 
 def require_dashboard_login(request: Request) -> None:
-    password = os.getenv("DASHBOARD_PASSWORD", "")
+    password = os.getenv("DASHBOARD_PASSWORD", "").strip()
     if not password:
         return
     user = os.getenv("DASHBOARD_USER", "admin")

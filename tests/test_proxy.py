@@ -90,4 +90,4 @@ def test_streams_are_not_cached(client, upstream):
 
 
 def test_health_reports_version(client):
-    assert client.get("/health").json() == {"ok": True, "version": "0.6.5"}
+    assert client.get("/health").json() == {"ok": True, "version": "0.6.6"}

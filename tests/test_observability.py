@@ -169,6 +169,15 @@ def test_metrics_token(client, monkeypatch):
     assert client.get("/metrics", headers={"Authorization": "Bearer scrape-secret"}).status_code == 200
 
 
+def test_tokens_from_secret_files_ignore_trailing_newline(client, monkeypatch):
+    # Kubernetes Secrets created from files often keep the file's trailing newline
+    monkeypatch.setenv("METRICS_TOKEN", "scrape-secret\n")
+    assert client.get("/metrics", headers={"Authorization": "Bearer scrape-secret"}).status_code == 200
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "pw-123456\n")
+    good = "Basic " + base64.b64encode(b"admin:pw-123456").decode()
+    assert client.get("/calls", headers={"Authorization": good}).status_code == 200
+
+
 def test_new_endpoints_need_dashboard_login(client, monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pw-123456")
     assert client.get("/calls").status_code == 401

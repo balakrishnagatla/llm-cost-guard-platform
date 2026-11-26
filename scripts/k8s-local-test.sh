@@ -129,6 +129,8 @@ install_gateway() {
   # METRICS_TOKEN protects /metrics; the ServiceMonitor sends it to Prometheus as a bearer token.
   mkdir -p "$STATE_DIR"
   [ -s "$STATE_DIR/metrics-token" ] || openssl rand -hex 16 > "$STATE_DIR/metrics-token"
+  # No trailing newline: it would end up inside the token (and break the HTTP header).
+  printf '%s' "$(tr -d '[:space:]' < "$STATE_DIR/metrics-token")" > "$STATE_DIR/metrics-token"
   printf '%s' "$key" | kc -n "$NS" create secret generic llm-cost-guard-secrets \
     --from-file=OPENAI_API_KEY=/dev/stdin --from-file=METRICS_TOKEN="$STATE_DIR/metrics-token" \
     --dry-run=client -o yaml | kc apply -f - >/dev/null
@@ -261,7 +263,12 @@ check_monitoring() {
     sleep 10
   done
   if printf '%s' "$up" | grep -q '"value":\[[0-9.]*,"1"\]'; then ok "Prometheus scrapes the gateway via the ServiceMonitor"
-  else bad "Prometheus isn't scraping the gateway (checked for 2 minutes)"; fi
+  else
+    bad "Prometheus isn't scraping the gateway (checked for 2 minutes)"
+    # Prometheus's own view of the target: health and last scrape error
+    kc get --raw "/api/v1/namespaces/$MON_NS/services/kps-prometheus:9090/proxy/api/v1/targets?state=active" 2>/dev/null \
+      | grep -o '"scrapeUrl":"[^"]*llm-cost-guard[^"]*"\|"lastError":"[^"]*"\|"health":"[^"]*"' | head -6 | sed 's/^/        /' | tee -a "$REPORT" || true
+  fi
 
   local reqs
   reqs="$(prom_query 'sum(costguard_requests_total)' 2>/dev/null || true)"

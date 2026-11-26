@@ -78,7 +78,7 @@ No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=ht
 Each release publishes the image and the chart to GitHub Container Registry:
 
 ```bash
-helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.5 \
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.6 \
   --set secrets.existingSecret=llm-cost-guard-secrets
 ```
 
@@ -101,7 +101,7 @@ helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 
 
 Every pull request runs:
 
-- **App:** lint, type checks, 64 tests (96% coverage), dependency audit, static security scan
+- **App:** lint, type checks, 65 tests (96% coverage), dependency audit, static security scan
 - **Chart:** `helm lint`, schema validation of the rendered manifests (kubeconform), and guard-rail checks
 - **End to end on Kubernetes:** a real kind cluster installs the chart with an in-cluster mock provider, runs `helm test`, sends traffic through the gateway from a pod in the cluster (routing, caching, streaming, tracing, metrics, budgets), then deletes the pod and checks the call history survived
 - **Real traffic (on demand):** `scripts/k8s-local-test.sh` runs the same kind of checks against Groq, plus Prometheus, Grafana and Jaeger

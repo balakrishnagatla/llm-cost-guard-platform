@@ -1,6 +1,6 @@
 [project]
 name = "llm-cost-guard-platform"
-version = "0.6.0"
+version = "0.6.1"
 description = "LLM cost gateway: per-team cost tracking, caching, model routing, budgets and failover"
 requires-python = ">=3.12"
 license = "MIT"

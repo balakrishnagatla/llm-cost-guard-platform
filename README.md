@@ -63,7 +63,7 @@ No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=ht
 Each release publishes the image and the chart to GitHub Container Registry:
 
 ```bash
-helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.1.0 \
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.1 \
   --set secrets.existingSecret=llm-cost-guard-secrets
 ```
 

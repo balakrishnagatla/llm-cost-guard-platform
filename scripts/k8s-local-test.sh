@@ -69,12 +69,22 @@ install_monitoring() {
   [ -s "$STATE_DIR/grafana-admin-password" ] || openssl rand -hex 12 > "$STATE_DIR/grafana-admin-password"
   hm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
   hm repo update prometheus-community >/dev/null
-  # Lean install for a laptop: no Alertmanager, node exporter or kube-state-metrics.
+  # Lean install for a laptop: no Alertmanager, node exporter, kube-state-metrics, default alert
+  # rules or Kubernetes control-plane scraping. Only the gateway (and the stack itself) is scraped.
   hm upgrade --install kps prometheus-community/kube-prometheus-stack -n "$MON_NS" \
     --set fullnameOverride=kps \
     --set alertmanager.enabled=false \
     --set nodeExporter.enabled=false \
     --set kubeStateMetrics.enabled=false \
+    --set defaultRules.create=false \
+    --set kubeApiServer.enabled=false \
+    --set kubelet.enabled=false \
+    --set kubeControllerManager.enabled=false \
+    --set kubeScheduler.enabled=false \
+    --set kubeProxy.enabled=false \
+    --set kubeEtcd.enabled=false \
+    --set coreDns.enabled=false \
+    --set prometheus.prometheusSpec.retention=6h \
     --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
     --set prometheus.prometheusSpec.scrapeInterval=15s \
     --set grafana.adminPassword="$(cat "$STATE_DIR/grafana-admin-password")" \
@@ -315,11 +325,13 @@ ui() {
     echo "  Jaeger             http://localhost:16686  (service: llm-cost-guard)"
   fi
   trap 'kill 0' INT TERM EXIT
-  kc -n "$NS" port-forward "svc/$RELEASE-llm-cost-guard" 8080:8080 >/dev/null &
+  # kubectl port-forward exits when a connection to the pod resets; keep each one running.
+  forward() { while true; do kc -n "$1" port-forward "svc/$2" "$3" >/dev/null 2>&1; sleep 1; done; }
+  forward "$NS" "$RELEASE-llm-cost-guard" 8080:8080 &
   if [ "$MONITORING" = "1" ]; then
-    kc -n "$MON_NS" port-forward svc/kps-grafana 3000:80 >/dev/null &
-    kc -n "$MON_NS" port-forward svc/kps-prometheus 9090:9090 >/dev/null &
-    kc -n "$MON_NS" port-forward svc/jaeger 16686:16686 >/dev/null &
+    forward "$MON_NS" kps-grafana 3000:80 &
+    forward "$MON_NS" kps-prometheus 9090:9090 &
+    forward "$MON_NS" jaeger 16686:16686 &
   fi
   wait
 }

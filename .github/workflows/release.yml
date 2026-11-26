@@ -41,7 +41,8 @@ jobs:
           sbom: true
           provenance: mode=max
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        # Pinned to a release published after the March 2026 trivy-action tag compromise (CVE-2026-33634).
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
           severity: CRITICAL,HIGH
@@ -52,5 +53,6 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           version="${GITHUB_REF_NAME#v}"
-          helm package charts/llm-cost-guard --app-version "$version"
+          # Chart and app share the release version, so `--version X` installs app X.
+          helm package charts/llm-cost-guard --version "$version" --app-version "$version"
           helm push llm-cost-guard-*.tgz "oci://ghcr.io/${{ github.repository_owner }}/charts"

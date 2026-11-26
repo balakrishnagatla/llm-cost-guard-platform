@@ -1,6 +1,6 @@
 # Roadmap
 
-## Done (v0.6, chart 0.1)
+## Done (v0.6)
 
 - ✅ Helm chart with security defaults, probes, persistence, Ingress, ServiceMonitor, NetworkPolicy, PDB, `helm test` and a values schema
 - ✅ Readiness and liveness endpoints, JSON logs, graceful shutdown

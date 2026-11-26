@@ -50,7 +50,7 @@ spec:
 Copy `deploy/values-aws-eks.yaml`, set your certificate ARN, hostname and budgets, then:
 
 ```bash
-helm upgrade --install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.3 \
+helm upgrade --install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.4 \
   --namespace llm-cost-guard --create-namespace -f values-aws-eks.yaml
 helm test lcg -n llm-cost-guard
 ```

@@ -57,3 +57,11 @@ def test_every_call_is_logged_without_prompt(client, caplog):
     rec = next(r for r in caplog.records if r.getMessage() == "llm call")
     assert rec.request_id == r.headers["x-request-id"] and rec.team == "logs" and rec.status == 200
     assert "my secret prompt" not in json.dumps({k: str(v) for k, v in vars(rec).items()})
+
+
+def test_integer_settings_accept_scientific_notation(monkeypatch):
+    from app.main import _env_int
+    monkeypatch.setenv("SOME_LIMIT", "1e+06")
+    assert _env_int("SOME_LIMIT", 5) == 1_000_000
+    monkeypatch.delenv("SOME_LIMIT")
+    assert _env_int("SOME_LIMIT", 5) == 5

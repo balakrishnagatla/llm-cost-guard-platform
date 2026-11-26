@@ -48,15 +48,20 @@ from .security import (
 configure_logging()
 log = logging.getLogger("cost_guard")
 
+def _env_int(name: str, default: int) -> int:
+    """Read an integer setting; accepts forms like "1e+06" that some templating tools produce."""
+    return int(float(os.getenv(name, str(default))))
+
+
 OPENAI_BASE = os.getenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
 ANTHROPIC_BASE = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
 # deterministic = cache only temperature 0 calls; all = cache everything; off = no cache
 CACHE_MODE = os.getenv("CACHE_MODE", "deterministic").lower()
 CACHE_TTL_SECONDS = float(os.getenv("CACHE_TTL_SECONDS", "86400"))
 UPSTREAM_TIMEOUT = float(os.getenv("UPSTREAM_TIMEOUT", "120"))
-MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", str(1_000_000)))
+MAX_BODY_BYTES = _env_int("MAX_BODY_BYTES", 1_000_000)
 # Output tokens assumed for the pre-call budget check when the request sets no limit
-DEFAULT_OUTPUT_ESTIMATE = int(os.getenv("DEFAULT_OUTPUT_ESTIMATE", "1024"))
+DEFAULT_OUTPUT_ESTIMATE = _env_int("DEFAULT_OUTPUT_ESTIMATE", 1024)
 # Upstream answers that make the gateway try the next fallback provider
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 

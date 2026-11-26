@@ -73,13 +73,13 @@ spec:
             - name: CACHE_MODE
               value: {{ .Values.config.cacheMode | quote }}
             - name: CACHE_TTL_SECONDS
-              value: {{ .Values.config.cacheTtlSeconds | quote }}
+              value: {{ int64 .Values.config.cacheTtlSeconds | quote }}
             - name: UPSTREAM_TIMEOUT
               value: {{ .Values.config.upstreamTimeout | quote }}
             - name: MAX_BODY_BYTES
-              value: {{ .Values.config.maxBodyBytes | quote }}
+              value: {{ int64 .Values.config.maxBodyBytes | quote }}
             - name: DEFAULT_OUTPUT_ESTIMATE
-              value: {{ .Values.config.defaultOutputEstimate | quote }}
+              value: {{ int64 .Values.config.defaultOutputEstimate | quote }}
             - name: LOG_FORMAT
               value: {{ .Values.config.logFormat | quote }}
             - name: LOG_LEVEL

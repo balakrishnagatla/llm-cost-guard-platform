@@ -66,29 +66,46 @@ jobs:
           kubectl get pods,svc,pvc
       - name: helm test
         run: helm test ci --logs
-      - name: End-to-end checks through the gateway
+      - name: End-to-end checks from inside the cluster
         run: |
-          kubectl port-forward svc/ci-llm-cost-guard 8080:8080 >/tmp/pf.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf localhost:8080/health/ready && break; sleep 1; done
-          python3 scripts/live_smoke.py
-          # Budgets are enforced in-cluster (ci-budget has a tiny budget)
-          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/openai/v1/chat/completions \
-            -H 'Content-Type: application/json' -H 'X-Team: ci-budget' \
-            -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}')
-          test "$code" = 429 && echo "budget enforced (429)"
+          # Run the checks in a pod, calling the gateway by its Service name like a real app would.
+          run_in_cluster() {
+            kubectl run "$1" --image=llm-cost-guard-platform:ci --image-pull-policy=Never --restart=Never \
+              --rm -i --quiet --env GATEWAY_URL=http://ci-llm-cost-guard:8080 \
+              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":10001}}}' \
+              --command -- "${@:2}"
+          }
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard-mock --timeout=60s
+          run_in_cluster smoke python scripts/live_smoke.py
+          # Budgets are enforced in-cluster (team ci-budget has a tiny budget)
+          run_in_cluster budget python -c "
+          import json, urllib.request, urllib.error
+          req = urllib.request.Request('http://ci-llm-cost-guard:8080/openai/v1/chat/completions', method='POST',
+              data=json.dumps({'model': 'auto', 'messages': [{'role': 'user', 'content': 'hi'}]}).encode(),
+              headers={'Content-Type': 'application/json', 'X-Team': 'ci-budget'})
+          try:
+              urllib.request.urlopen(req, timeout=30); raise SystemExit('expected 429')
+          except urllib.error.HTTPError as e:
+              assert e.code == 429, e.code
+              print('budget enforced (429)')
+          "
       - name: Data survives a pod restart (persistent volume)
         run: |
-          before=$(curl -s localhost:8080/stats | python3 -c "import json,sys; print(json.load(sys.stdin)['totals']['calls'])")
+          calls() {
+            kubectl run "count-$1" --image=llm-cost-guard-platform:ci --image-pull-policy=Never --restart=Never \
+              --rm -i --quiet --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":10001}}}' \
+              --command -- python -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://ci-llm-cost-guard:8080/stats'))['totals']['calls'])"
+          }
+          before=$(calls 1)
           kubectl delete pod -l app.kubernetes.io/name=llm-cost-guard --wait
           kubectl rollout status deploy/ci-llm-cost-guard --timeout 2m
-          pkill -f port-forward || true
-          kubectl port-forward svc/ci-llm-cost-guard 8080:8080 >/tmp/pf.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf localhost:8080/health/ready >/dev/null && break; sleep 1; done
-          after=$(curl -s localhost:8080/stats | python3 -c "import json,sys; print(json.load(sys.stdin)['totals']['calls'])")
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard --timeout=90s
+          after=$(calls 2)
           echo "calls before restart: $before, after: $after"
-          test "$before" = "$after"
+          test -n "$before" && test "$before" = "$after"
       - name: Structured logs
-        run: kubectl logs deploy/ci-llm-cost-guard --tail=5
+        if: always()
+        run: kubectl logs deploy/ci-llm-cost-guard --tail=8
       - name: Diagnostics on failure
         if: failure()
         run: |

@@ -106,3 +106,36 @@ def test_security_headers(client, upstream):
 def test_docs_endpoints_disabled(client, upstream):
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
+
+
+def test_credential_fingerprint_is_salted_and_slow(monkeypatch, tmp_path):
+    import hashlib
+    import stat
+
+    from app import security
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "x.db"))
+    monkeypatch.setattr(security, "_salt", None)
+    security._derive.cache_clear()
+    a1 = security.credential_fingerprint({"Authorization": "Bearer sk-aaa"})
+    a2 = security.credential_fingerprint({"Authorization": "Bearer sk-aaa"})
+    b = security.credential_fingerprint({"x-api-key": "sk-bbb"})
+    assert a1 == a2 and a1 != b
+    assert security.credential_fingerprint({}) == "none"
+    # Not a plain (unsalted) hash of the credential, and doesn't contain it
+    assert a1 not in hashlib.sha256(b"Bearer sk-aaa").hexdigest()
+    assert "sk-aaa" not in a1
+    # The salt is stored next to the database, readable by the owner only, and reused
+    salt_file = tmp_path / "fingerprint.salt"
+    assert len(salt_file.read_bytes()) == 32
+    assert stat.S_IMODE(salt_file.stat().st_mode) == 0o600
+    monkeypatch.setattr(security, "_salt", None)
+    security._derive.cache_clear()
+    assert security.credential_fingerprint({"Authorization": "Bearer sk-aaa"}) == a1
+    # A different deployment (different salt) gets a different fingerprint
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "other" / "x.db"))
+    monkeypatch.setattr(security, "_salt", None)
+    security._derive.cache_clear()
+    assert security.credential_fingerprint({"Authorization": "Bearer sk-aaa"}) != a1
+    monkeypatch.setattr(security, "_salt", None)
+    security._derive.cache_clear()

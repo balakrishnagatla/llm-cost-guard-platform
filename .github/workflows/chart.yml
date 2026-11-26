@@ -68,17 +68,13 @@ jobs:
         run: helm test ci --logs
       - name: End-to-end checks from inside the cluster
         run: |
-          # Run the checks in a pod, calling the gateway by its Service name like a real app would.
-          run_in_cluster() {
-            kubectl run "$1" --image=llm-cost-guard-platform:ci --image-pull-policy=Never --restart=Never \
-              --rm -i --quiet --env GATEWAY_URL=http://ci-llm-cost-guard:8080 \
-              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":10001}}}' \
-              --command -- "${@:2}"
-          }
+          # Run the checks from the mock provider's pod (same image), calling the gateway by its
+          # Service name like a real app would. kubectl exec streams output reliably.
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard-mock --timeout=60s
-          run_in_cluster smoke python scripts/live_smoke.py
+          in_cluster() { kubectl exec deploy/ci-llm-cost-guard-mock -- env GATEWAY_URL=http://ci-llm-cost-guard:8080 "$@"; }
+          in_cluster python scripts/live_smoke.py
           # Budgets are enforced in-cluster (team ci-budget has a tiny budget)
-          run_in_cluster budget python -c "
+          in_cluster python -c "
           import json, urllib.request, urllib.error
           req = urllib.request.Request('http://ci-llm-cost-guard:8080/openai/v1/chat/completions', method='POST',
               data=json.dumps({'model': 'auto', 'messages': [{'role': 'user', 'content': 'hi'}]}).encode(),
@@ -92,15 +88,15 @@ jobs:
       - name: Data survives a pod restart (persistent volume)
         run: |
           calls() {
-            kubectl run "count-$1" --image=llm-cost-guard-platform:ci --image-pull-policy=Never --restart=Never \
-              --rm -i --quiet --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":10001}}}' \
-              --command -- python -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://ci-llm-cost-guard:8080/stats'))['totals']['calls'])"
+            kubectl exec deploy/ci-llm-cost-guard-mock -- python -c \
+              "import json,urllib.request; print(json.load(urllib.request.urlopen('http://ci-llm-cost-guard:8080/stats', timeout=10))['totals']['calls'])"
           }
-          before=$(calls 1)
+          before=$(calls)
           kubectl delete pod -l app.kubernetes.io/name=llm-cost-guard --wait
           kubectl rollout status deploy/ci-llm-cost-guard --timeout 2m
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=llm-cost-guard --timeout=90s
-          after=$(calls 2)
+          after=""
+          for i in $(seq 1 10); do after=$(calls 2>/dev/null) && [ -n "$after" ] && break; sleep 2; done
           echo "calls before restart: $before, after: $after"
           test -n "$before" && test "$before" = "$after"
       - name: Structured logs

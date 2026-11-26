@@ -31,7 +31,23 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-      - name: Build and push image (with SBOM and provenance)
+      - name: Build image (not published yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: llm-cost-guard-platform:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image for vulnerabilities (blocks the release)
+        # Pinned to a release published after the March 2026 trivy-action tag compromise (CVE-2026-33634).
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: llm-cost-guard-platform:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push image (with SBOM and provenance)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -40,14 +56,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           sbom: true
           provenance: mode=max
-      - name: Scan image for vulnerabilities
-        # Pinned to a release published after the March 2026 trivy-action tag compromise (CVE-2026-33634).
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
+          cache-from: type=gha
       - uses: azure/setup-helm@v5
       - name: Package and push the Helm chart (OCI)
         run: |

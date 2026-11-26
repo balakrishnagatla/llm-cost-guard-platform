@@ -1,0 +1,19 @@
+# Local cluster with real Groq traffic plus the full monitoring stack.
+# Used by scripts/k8s-local-test.sh, which installs:
+#   - kube-prometheus-stack (Prometheus Operator, Prometheus, Grafana) in namespace "monitoring"
+#   - Jaeger (OTLP on 4318, UI on 16686) in namespace "monitoring"
+# and creates the Secret below from your .env file.
+secrets:
+  existingSecret: llm-cost-guard-secrets
+config:
+  logFormat: json
+  # "demo" gets a $1/day budget; "k8s-budget" a tiny one so the budget check returns 429
+  # before any request reaches the provider.
+  budgets: "demo:1,k8s-budget:0.000001"
+otel:
+  endpoint: http://jaeger.monitoring:4318
+metrics:
+  serviceMonitor:
+    enabled: true
+  grafanaDashboard:
+    enabled: true

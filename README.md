@@ -29,11 +29,26 @@ LLM Cost Guard is a gateway that sits between your apps and LLM providers. It tr
 
 | Path | What it is |
 |---|---|
-| `charts/llm-cost-guard/` | Helm chart: Deployment, Service, Ingress, ConfigMap, Secret or existing Secret, PersistentVolumeClaim, ServiceMonitor, NetworkPolicy, PodDisruptionBudget, `helm test`, values schema |
-| `deploy/` | Values for a local cluster and for AWS EKS |
+| `charts/llm-cost-guard/` | Helm chart: Deployment, Service, Ingress, ConfigMap, Secret or existing Secret, PersistentVolumeClaim, ServiceMonitor, Grafana dashboard, NetworkPolicy, PodDisruptionBudget, `helm test`, values schema |
+| `deploy/` | Values for a local cluster (with or without monitoring) and for AWS EKS |
 | `app/` | The gateway (from LLM Cost Guard v0.5), plus Kubernetes readiness/liveness endpoints and JSON logs |
+| `scripts/k8s-local-test.sh` | One-command real-traffic test of the published chart on your laptop |
 | `scripts/mock_provider.py` | Simulated LLM provider, used for in-cluster tests and demos |
 | `.github/workflows/` | App CI, chart lint and schema validation, end-to-end install on a kind cluster, release to GHCR |
+
+## Test it on your laptop with real traffic
+
+One command creates a kind cluster, installs the published chart from GHCR with Prometheus, Grafana and Jaeger, sends real requests to Groq through the gateway and checks the results:
+
+```bash
+git clone https://github.com/balakrishnagatla/llm-cost-guard-platform.git
+cd llm-cost-guard-platform
+ENV_FILE=~/path/to/.env ./scripts/k8s-local-test.sh   # .env with OPENAI_API_KEY=<your Groq key>
+./scripts/k8s-local-test.sh ui     # open the gateway dashboard, Grafana, Prometheus and Jaeger
+./scripts/k8s-local-test.sh down   # delete the cluster
+```
+
+It checks: `helm test`, routing to the cheap and strong models, cache hits, low reasoning effort, per-call traces, streaming, budgets (429), data surviving a pod restart, JSON logs, Prometheus scraping via the ServiceMonitor, the Grafana dashboard, and traces in Jaeger. Needs Docker Desktop; installs `kind`, `kubectl` and `helm` with Homebrew if missing. Details in the [Kubernetes guide](docs/Kubernetes.md#real-traffic-test-on-a-laptop).
 
 ## Quick start on a local cluster
 
@@ -63,7 +78,7 @@ No API key? Add `--set mockProvider.enabled=true --set provider.openaiBaseUrl=ht
 Each release publishes the image and the chart to GitHub Container Registry:
 
 ```bash
-helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.2 \
+helm install lcg oci://ghcr.io/balakrishnagatla/charts/llm-cost-guard --version 0.6.3 \
   --set secrets.existingSecret=llm-cost-guard-secrets
 ```
 
@@ -87,6 +102,7 @@ Every pull request runs:
 - **App:** lint, type checks, 63 tests (96% coverage), dependency audit, static security scan
 - **Chart:** `helm lint`, schema validation of the rendered manifests (kubeconform), and guard-rail checks
 - **End to end on Kubernetes:** a real kind cluster installs the chart with an in-cluster mock provider, runs `helm test`, sends traffic through the gateway from a pod in the cluster (routing, caching, streaming, tracing, metrics, budgets), then deletes the pod and checks the call history survived
+- **Real traffic (on demand):** `scripts/k8s-local-test.sh` runs the same kind of checks against Groq, plus Prometheus, Grafana and Jaeger
 
 ## Docs
 

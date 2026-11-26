@@ -127,6 +127,13 @@ metrics:
     enabled: false  # requires the Prometheus Operator CRDs
     interval: 30s
     labels: {}
+  # Ship the Grafana dashboard as a ConfigMap for the Grafana sidecar (kube-prometheus-stack).
+  # It expects a Prometheus data source with uid "prometheus" (the kube-prometheus-stack default).
+  grafanaDashboard:
+    enabled: false
+    namespace: ""             # "" = release namespace; the sidecar must watch it
+    labelKey: grafana_dashboard
+    labelValue: "1"
 
 networkPolicy:
   enabled: false
